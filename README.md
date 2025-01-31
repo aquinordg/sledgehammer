@@ -36,6 +36,7 @@ pip install git+https://github.com/aquinordg/sledgehammer.git
 ```python
 import pandas as pd
 import numpy as np
+from sklearn.cluster import KMeans
 from sledgehammer import sledgehammer_score, sledgehammer_score_clusters, semantic_descriptors
 ```
 
