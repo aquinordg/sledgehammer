@@ -312,78 +312,136 @@ def sledge_curve(X, labels, particular_threshold=0.0, aggregation='harmonic'):
     return fractions, thresholds
 
 
-##### CDS Clustering #####
+##### FORGE Clustering #####
 
-def calc_score(clusters, support):
-    descriptors = [ cluster.mean(axis=0) > support for cluster in clusters ]
-    exclusive_counts = []
-    for c in range(len(clusters)):
-        others = np.logical_or.reduce([ descriptors[k] for k in range(len(clusters)) if k != c ])
-        exclusive_count = np.logical_and(descriptors[c], np.logical_not(others)).sum()
-        exclusive_counts.append(exclusive_count)
-    return np.mean(exclusive_counts)
+from heapq import nsmallest
 
-def cds_clustering(X, K, support=0.8):
-    clusters = [pd.DataFrame(X)]
+def get_sledgehammer_score(target, ref):
+    """
+    Compute the sledgehammer dissimilarity score between target and reference.
 
-    for k in range(K-1):
-        score = []
+    This score measures how distinct a target sample is from a reference group,
+    with higher values indicating greater dissimilarity.
 
-        biggest_id = np.argmax([ x.shape[0] for x in clusters ])#[0]
-        biggest = clusters[biggest_id]
+    Parameters
+    ----------
+    target : array-like of shape (n_features,)
+        Binary feature vector of the target sample.
+    ref : array-like of shape (n_ref_samples, n_features)
+        Binary feature matrix of reference samples.
 
-        for attr in range(X.shape[1]):
-            c1, c2 = biggest[biggest[attr] == 0].copy(), biggest[biggest[attr] == 1].copy()
-            new_clusters = [ clusters[i] for i in range(len(clusters)) if i != biggest_id ] + [c1, c2]
-            score.append(calc_score(new_clusters, support))
+    Returns
+    -------
+    score : float
+        Sledgehammer dissimilarity score between 0 and 1, where:
+        - 0: target is identical to reference
+        - 1: target is maximally distinct from reference
 
+    Notes
+    -----
+    1. Both target and reference must contain only binary values (0 or 1).
+    2. The score combines four components (S, L, E, D) that measure different
+       aspects of feature relationships.
+    3. For empty reference, returns 1 (maximal dissimilarity).
 
-        best_attr = np.argmax(score)
-        c1, c2 = biggest[biggest[best_attr] == 0].copy(), biggest[biggest[best_attr] == 1].copy()
-        new_clusters = [ clusters[i] for i in range(len(clusters)) if i != biggest_id ] + [c1, c2]
-        new_descriptors = [ np.where(cluster.mean(axis=0) > 0.8)[0] for cluster in new_clusters ]
-        
-        clusters = new_clusters
+    Examples
+    --------
+    >>> target = np.array([1, 0, 1])
+    >>> ref = np.array([[0, 1, 1], [1, 1, 0]])
+    >>> score = get_sledgehammer_score(target, ref)
+    >>> print(f"{score:.3f}")
+    0.742
+    """
+    # Garante que 'target' e 'ref' sejam 2D (mesmo se tiverem apenas 1 linha)
+    target = np.atleast_2d(target)
+    ref = np.atleast_2d(ref)
 
-    labels = np.empty(X.shape[0])
+    # Concatena ref e target em X (target fica na última posição)
+    X = np.vstack([ref, target])
     
-    for i in range(len(new_clusters)):
-        idx = new_clusters[i].index.values.tolist()
-        for j in idx:
-            labels[j] = i
+    # Cria labels: 0 para ref, 1 apenas para a última linha (target)
+    labels = np.zeros(len(X), dtype=int)
+    labels[-1] = 1  # Último elemento = 1 (target)
     
-    return labels, new_descriptors
+    return sledgehammer_score(X, labels, aggregation='median')
+
+def forge(data, k):
+    """
+    FORGE (Feature-Oriented Robust Grouping Engine).
+
+    This function performs binary data clustering using a sledgehammer-score-based approach.
+
+    Parameters
+    ----------
+    data : array-like of shape (n_samples, n_features)
+        Binary feature array where each row represents a sample and each column a feature.
+        All features must be binary (0 or 1).
+    k : int
+        Number of clusters to form (must be >= 1).
+
+    Returns
+    -------
+    labels : ndarray of shape (n_samples,)
+        Cluster labels for each sample, starting from 0 to k-1.
+
+    Notes
+    -----
+    1. The algorithm works best with high-dimensional binary data.
+    2. For k=1, all samples are assigned to cluster 0.
+    3. The distance metric used is the sledgehammer score.
+
+    Examples
+    --------
+    >>> from forge import FORGE
+    >>> data = np.array([[1,0,1], [0,1,1], [1,1,0]])
+    >>> labels = FORGE(data, k=2)
+    >>> print(labels)
+    [0 1 0]
+    """
     
-def cds_report(X, K=9, support=0.8):
-    clusters = [X]
-    result = []
+    n_samples = len(data)
+    if k == 1:
+        return np.zeros(n_samples, dtype=int)
     
-    while len(result) < K:
-        score = []
-        biggest_id = np.argmax([ x.shape[0] for x in clusters ])#[0]
-        biggest = clusters[biggest_id]
-
-        for attr in range(X.shape[1]):
-            c1, c2 = biggest[biggest[:, attr] == 0, :].copy(), biggest[biggest[:, attr] == 1, :].copy()
-            new_clusters = [ clusters[i] for i in range(len(clusters)) if i != biggest_id ] + [c1, c2]
-            score.append(calc_score(new_clusters, support))
-
-        best_attr = np.argmax(score)
-        c1, c2 = biggest[biggest[:, best_attr] == 0, :].copy(), biggest[biggest[:, best_attr] == 1, :].copy()
-        new_clusters = [ clusters[i] for i in range(len(clusters)) if i != biggest_id ] + [c1, c2]
-        new_descriptors = [ np.where(cluster.mean(axis=0) > 0.8)[0] for cluster in new_clusters ]
-
-        result.append({
-            "k": len(new_clusters),
-            "clusters": new_clusters,
-            "score": score[best_attr],
-            "descriptors": new_descriptors,
-        })
-
-        clusters = new_clusters
-        
-    result = pd.DataFrame(result)
-    tilde_k = result.loc[result.score.idxmax()].k
-    return tilde_k, result
+    # 1. Calcula a matriz de dissimilaridade completa
+    dissim_matrix = np.zeros((n_samples, n_samples))
+    for i in range(n_samples):
+        for j in range(i+1, n_samples):
+            dissim_matrix[i,j] = dissim_matrix[j,i] = get_sledgehammer_score(data[i], data[j])
     
- #
+    # 2. Seleciona os k exemplares mais distintos
+    exemplars = []
+    remaining_points = set(range(n_samples))
+    
+    # Primeiro exemplar: ponto com maior dissimilaridade média
+    avg_dissim = dissim_matrix.mean(axis=1)
+    exemplars.append(np.argmax(avg_dissim))
+    remaining_points.remove(exemplars[0])
+    
+    # Demais exemplares: pontos mais distantes dos já selecionados
+    for _ in range(1, k):
+        max_min_dist = -1
+        best_point = -1
+        for point in remaining_points:
+            min_dist = min(dissim_matrix[point, e] for e in exemplars)
+            if min_dist > max_min_dist:
+                max_min_dist = min_dist
+                best_point = point
+        exemplars.append(best_point)
+        remaining_points.remove(best_point)
+    
+    # 3. Atribui cada ponto ao exemplar mais próximo
+    labels = np.zeros(n_samples, dtype=int)
+    for i in range(n_samples):
+        closest_exemplar = exemplars[0]
+        min_dist = dissim_matrix[i, closest_exemplar]
+        for j in range(1, k):
+            if dissim_matrix[i, exemplars[j]] < min_dist:
+                min_dist = dissim_matrix[i, exemplars[j]]
+                closest_exemplar = exemplars[j]
+        labels[i] = exemplars.index(closest_exemplar)
+    
+    # 4. Renumera os clusters para 0 a k-1
+    unique_labels = np.unique(labels)
+    label_mapping = {old: new for new, old in enumerate(unique_labels)}
+    return np.array([label_mapping[l] for l in labels])
