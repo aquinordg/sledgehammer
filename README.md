@@ -1,7 +1,7 @@
 ![Project](https://img.shields.io/badge/Project-sledgehammer-blue)
 ![Author](https://img.shields.io/badge/Author-aquinordg-green)
-![Python](https://img.shields.io/badge/Python-3.13-blue)
-![Version](https://img.shields.io/badge/Version-1.0-orange)
+![Python](https://img.shields.io/badge/Python-3.12+-blue)
+![Version](https://img.shields.io/badge/Version-1.0.0-orange)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 # SLEDgeHammer (SLEDgeH): Support, Length, Exclusivity and Difference Weigthed for Group Evaluation
@@ -21,11 +21,10 @@ SLEDgeH is a Python library for evaluating clustering results using a semantic-b
 
 ## 🛠 Installation
 
-Install using *git* and *pip install*:
+Install using *pip*:
 
 ```bash
-pip install git+https://github.com/aquinordg/sledgehammer.git
-
+pip install sledgehammer
 ```
 
 ---
@@ -34,9 +33,8 @@ pip install git+https://github.com/aquinordg/sledgehammer.git
 
 ### Importing the Library
 ```python
-import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans  # requires: pip install scikit-learn
 from sledgehammer import sledgehammer_score, sledgehammer_score_clusters, semantic_descriptors
 ```
 
@@ -152,7 +150,3 @@ Developed by AQUINO, R. D. G.
 ## 💬 Feedback
 
 Feel free to open an issue or contact me for feedback or feature requests. Your input is highly appreciated!
-
-
-
-
